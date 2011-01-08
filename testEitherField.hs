@@ -26,6 +26,7 @@ getRootR :: GHandler Test Test RepHtml
 getRootR = do
   (res,w,enc) <- runFormGet $ paramsFormlet $ Just $ Params $ Left 0 -- Right "hey"
   defaultLayout $ do
+    addScriptRemote "http://ajax.googleapis.com/ajax/libs/jquery/1.4/jquery.min.js" 
     [$hamlet|
 $show res$
 %form!enctype=$enc$!method=GET
@@ -42,4 +43,4 @@ mkYesod "Test" [$parseRoutes|
 
 instance Yesod Test where approot _ = ""
 
-main = basicHandler 3002 Test
+main = basicHandler 3000 Test

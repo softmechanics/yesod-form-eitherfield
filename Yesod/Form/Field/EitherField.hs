@@ -22,8 +22,6 @@ eitherField ffs fl1 fl2 orig = GForm $ do
       tooltip = ffsTooltip ffs
   name <- maybe newFormIdent return $ ffsName ffs
   ident <- maybe newFormIdent return $ ffsId ffs
-  lRadioId <- newFormIdent
-  rRadioId <- newFormIdent
   onClickFn <- newFormIdent
 
   let (defaultF1Val, defaultF2Val) = 
@@ -34,16 +32,13 @@ eitherField ffs fl1 fl2 orig = GForm $ do
                     Left l -> (Just l, Nothing)
                     Right r -> (Nothing, Just r)
 
-      (GForm f1) = fl1 defaultF1Val
-      (GForm f2) = fl2 defaultF2Val
-
-  (rl, [il], el) <- f1
-  (rr, [ir], er) <- f2
+  (rl, [il], el) <- deform $ fl1 defaultF1Val
+  (rr, [ir], er) <- deform $ fl2 defaultF2Val
 
   let leftId = fiIdent il
       rightId = fiIdent ir
 
-      defaultCheckedField =
+  let defaultCheckedField =
         case orig of
              Left 0 -> leftId
              Left 1 -> rightId
@@ -51,43 +46,34 @@ eitherField ffs fl1 fl2 orig = GForm $ do
              Right (Left _) -> leftId
              Right _ -> rightId
 
-      onClickW = addJulius [$julius|
-          function %onClickFn%(id) {
-            $('#%leftId%').hide();
-            $('#%rightId%').hide();
-            $('#' + id).show();
-          }
-        |]
-
-      clearErrors (FormFailure _) = FormFailure []
+  -- Don't report errors at the level of the radio buttons.
+  -- They're already reported by the inner fields
+  let clearErrors (FormFailure _) = FormFailure []
       clearErrors x = x
 
-      (res, checkedField) = 
-        if null env
-           then (FormMissing, defaultCheckedField)
-           else case lookup name env of
-                     Nothing -> (FormMissing, defaultCheckedField)
-                     Just a | a == leftId -> (clearErrors $ fmap Left rl, leftId)
-                            | a == rightId -> (clearErrors $ fmap Right rr, rightId)
-                            | otherwise -> (FormFailure ["Invalid Entry"], defaultCheckedField)
-      fiChecked fi = fiIdent fi == checkedField
-      radioIdent fi = case fiIdent fi of
-                          ident | ident == leftId -> lRadioId
-                                | ident == rightId -> rRadioId
+  let (res, checkedField) = 
+        case lookup name env of
+             Nothing -> (FormMissing, defaultCheckedField)
+             Just a | a == leftId -> (clearErrors $ fmap Left rl, leftId)
+                    | a == rightId -> (clearErrors $ fmap Right rr, rightId)
+                    | otherwise -> (FormFailure ["Invalid Entry"], defaultCheckedField)
+
+  let fiChecked fi = fiIdent fi == checkedField
+
+      -- We render the label near the radio button, so don't want to render it again with the field
       clearLabel fi = fi { fiLabel = "" }
 
-      clearFieldErrors fi = if fiChecked fi
-                               then fi
-                               else fi { fiErrors = Nothing }
+      -- Don't show errors for the unchecked field
+      clearFieldErrors fi = if fiChecked fi then fi else fi { fiErrors = Nothing }
 
-      mkRadio fi = [$hamlet|
+  let mkRadio fi = [$hamlet|
         .
-          %input!:fiChecked fi:checked!type=radio!id=$radioIdent fi$!name=$name$!value=$fiIdent fi$!onClick=$onClickFn$('$fiIdent fi$')
+          %input!:fiChecked fi:checked!type=radio!name=$name$!value=$fiIdent fi$!onClick=$onClickFn$('$fiIdent fi$')
           %label!for=$fiIdent.fi$ $fiLabel fi$
             .tooltip $fiTooltip.fi$
         |]
 
-      mkInput fi = [$hamlet|
+  let mkInput fi = [$hamlet|
         .!id=$fiIdent fi$
           ^fiInput fi^
           $maybe fiErrors.clearFieldErrors.fi err
@@ -95,14 +81,19 @@ eitherField ffs fl1 fl2 orig = GForm $ do
         |]
           
   let input = do
-        onClickW
         addJulius [$julius|
+          function %onClickFn%(id) {
+            $('#%leftId%').hide();
+            $('#%rightId%').hide();
+            $('#' + id).show();
+          }
+
           $().ready(function () {
             %onClickFn%('%checkedField%');
           });
         |]
 
-        [$hamlet| 
+        addWidget [$hamlet| 
           %table!id=$ident$
             %tr
               %th!align=left
@@ -112,7 +103,7 @@ eitherField ffs fl1 fl2 orig = GForm $ do
                 ^mkInput il^
                 ^mkInput ir^
         |]
-      fi = FieldInfo 
+  let fi = FieldInfo 
            { fiLabel = string label
            , fiTooltip = tooltip
            , fiIdent = ident
